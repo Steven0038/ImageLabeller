@@ -1,6 +1,7 @@
 package com.steven.model.trainer
 
 import com.steven.model.bo.SharedConfig
+import com.steven.model.bo.TrainParams
 import org.datavec.api.io.filters.BalancedPathFilter
 import org.datavec.api.io.labels.ParentPathLabelGenerator
 import org.datavec.api.split.FileSplit
@@ -36,11 +37,9 @@ class ImageTrainer(private val config: SharedConfig) {
         val modelConf = NeuralNetConfiguration.Builder()
                 .seed(seed.toLong())
                 .updater(Adam())
-//                .iterations(iterations)
                 .gradientNormalization(GradientNormalization.RenormalizeL2PerLayer) // normalize to prevent vanishing or exploding gradients
                 .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
                 .l1(1e-4)
-//                .regularization(true)
                 .l2(5 * 1e-4)
                 .list()
                 .layer(0, ConvolutionLayer.Builder(intArrayOf(4, 4), intArrayOf(1, 1), intArrayOf(0, 0))
@@ -50,9 +49,7 @@ class ImageTrainer(private val config: SharedConfig) {
                         .nOut(32)
                         .weightInit(WeightInit.XAVIER_UNIFORM)
                         .activation(Activation.RELU)
-//                        .learningRate(1e-2)
                         .biasInit(1e-2)
-//                        .biasLearningRate(1e-2 * 2)
                         .build())
                 .layer(1, SubsamplingLayer.Builder(SubsamplingLayer.PoolingType.MAX, intArrayOf(3, 3))
                         .name("pool1")
@@ -78,19 +75,19 @@ class ImageTrainer(private val config: SharedConfig) {
             .also { it.init() }
     }
 
-    fun train(model: MultiLayerNetwork, epochs:Int, batchSize: Int = 10, fileDir: String): MultiLayerNetwork {
+    fun train(model: MultiLayerNetwork, trainParams: TrainParams): MultiLayerNetwork {
         // R,G,B channels
         val channels = 3
 
-        // 读取目标资料夹load files and split
-        val parentDir = File(fileDir)
+        // load training target files
+        val parentDir = File(trainParams.trainFileDir)
         val fileSplit = FileSplit(parentDir, NativeImageLoader.ALLOWED_FORMATS, Random(42))
         val numLabels = fileSplit.rootDir.listFiles { obj: File -> obj.isDirectory }.size
 
         // identify labels in the path
         val parentPathLabelGenerator = ParentPathLabelGenerator()
 
-        // file split to train/test using the weights.
+        // file split to train/test dataset using the weights.
         val balancedPathFilter =
             BalancedPathFilter(Random(42), NativeImageLoader.ALLOWED_FORMATS, parentPathLabelGenerator)
         val inputSplits = fileSplit.sample(balancedPathFilter, 80.0, 20.0)
@@ -99,18 +96,18 @@ class ImageTrainer(private val config: SharedConfig) {
         val trainData = inputSplits[0]
         val testData = inputSplits[1]
 
-        val scalar: DataNormalization = ImagePreProcessingScaler(0.0, 1.0)
+        val normalizer: DataNormalization = ImagePreProcessingScaler(0.0, 1.0)
 
         // train without transformations
         val imageRecordReader = ImageRecordReader(config.imageSize.toLong(), config.imageSize.toLong(), channels.toLong(), parentPathLabelGenerator)
         imageRecordReader.initialize(trainData, null)
-        val dataSetIterator: DataSetIterator = RecordReaderDataSetIterator(imageRecordReader, batchSize, 1, numLabels)
-        scalar.fit(dataSetIterator)
-        dataSetIterator.preProcessor = scalar
+        val dataSetIterator: DataSetIterator = RecordReaderDataSetIterator(imageRecordReader, trainParams.batchSize, 1, numLabels)
+        normalizer.fit(dataSetIterator)
+        dataSetIterator.preProcessor = normalizer
 
         model.setListeners(ScoreIterationListener(100)) //PerformanceListener for optimized training
 
-        for (i in 0 until epochs) {
+        for (i in 0 until trainParams.numEpochs) {
             log.info("Epoch=====================$i")
             model.fit(dataSetIterator)
         }
@@ -148,14 +145,14 @@ class ImageTrainer(private val config: SharedConfig) {
         val trainData = inputSplits[0]
         val testData = inputSplits[1]
 
-        val scalar: DataNormalization = ImagePreProcessingScaler(0.0, 1.0)
+        val normalizer: DataNormalization = ImagePreProcessingScaler(0.0, 1.0)
 
         //train without transformations
         val imageRecordReader = ImageRecordReader(config.imageSize.toLong(), config.imageSize.toLong(), channels.toLong(), parentPathLabelGenerator)
         imageRecordReader.initialize(trainData, null)
         val dataSetIterator: DataSetIterator = RecordReaderDataSetIterator(imageRecordReader, batchSize, 1, numLabels)
-        scalar.fit(dataSetIterator)
-        dataSetIterator.preProcessor = scalar
+        normalizer.fit(dataSetIterator)
+        dataSetIterator.preProcessor = normalizer
 
         model.setListeners(ScoreIterationListener(100)) //PerformanceListener for optimized training
 
