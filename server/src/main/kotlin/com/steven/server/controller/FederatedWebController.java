@@ -1,5 +1,6 @@
 package com.steven.server.controller;
 
+import com.google.common.util.concurrent.RateLimiter;
 import com.steven.server.core.datasource.FileDataSource;
 import com.steven.server.core.datasource.MemoryDataSource;
 import com.steven.server.core.FederatedAveragingStrategy;
@@ -11,6 +12,7 @@ import com.steven.server.core.domain.model.RoundController;
 import com.steven.server.core.domain.model.UpdatesStrategy;
 import com.steven.server.core.domain.model.UpdatingRound;
 import com.steven.server.core.domain.repository.ServerRepository;
+import com.steven.server.response.ResponseHandler;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -31,6 +34,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/service/federatedservice")
@@ -39,6 +43,8 @@ public class FederatedWebController {
 
     private static FederatedServer federatedServer;
 
+    RateLimiter rateLimiter = RateLimiter.create(100.0);
+
     private final String modelDir;
 
     private final String timeWindow;
@@ -46,7 +52,6 @@ public class FederatedWebController {
     private final String minUpdates;
 
     private final String layerIndex;
-
 
     /**
      * initialize classes and file data source when server start
@@ -103,8 +108,9 @@ public class FederatedWebController {
 
     /**
      * client POST on device trained model gradients
+     *
      * @param multipartFile model gradients
-     * @param samples the number of image size to train this model gradients
+     * @param samples       the number of image size to train this model gradients
      * @return [Boolean] update efficient or not
      */
     @PostMapping("model")
@@ -139,8 +145,13 @@ public class FederatedWebController {
      * @return model data file
      */
     @GetMapping("model")
-    public ResponseEntity<ByteArrayResource> getFile() {
+    public ResponseEntity<Object> getFile() {
         log.info("[getFile]...");
+
+        if (!rateLimiter.tryAcquire(1000, TimeUnit.MILLISECONDS)) {
+            log.warn("too many request, please retry later!");
+            return new ResponseHandler().generateResponse("too many request, please retry later!", HttpStatus.TOO_MANY_REQUESTS, null);
+        }
 
         File file = federatedServer.getModelFile();
         String fileName = federatedServer.getUpdatingRound().getModelVersion() + ".zip";
