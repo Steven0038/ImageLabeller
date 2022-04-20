@@ -1,24 +1,22 @@
 package com.steven.server.controller;
 
 import com.google.common.util.concurrent.RateLimiter;
-import com.steven.server.core.datasource.FileDataSource;
-import com.steven.server.core.datasource.MemoryDataSource;
 import com.steven.server.core.FederatedAveragingStrategy;
-import com.steven.server.core.datasource.FileDataSourceImpl;
-import com.steven.server.core.datasource.MemoryDataSourceImpl;
-import com.steven.server.core.datasource.ServerRepositoryImpl;
+import com.steven.server.core.datasource.*;
 import com.steven.server.core.domain.model.FederatedServer;
 import com.steven.server.core.domain.model.RoundController;
 import com.steven.server.core.domain.model.UpdatesStrategy;
 import com.steven.server.core.domain.model.UpdatingRound;
 import com.steven.server.core.domain.repository.ServerRepository;
+import com.steven.server.model.ModelFileEntity;
 import com.steven.server.response.ResponseHandler;
+import com.steven.server.service.ModelCacheService;
+import com.steven.server.util.CacheKey;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -30,9 +28,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
@@ -44,6 +42,8 @@ public class FederatedWebController {
     private static FederatedServer federatedServer;
 
     RateLimiter rateLimiter = RateLimiter.create(100.0);
+
+    private final ModelCacheService modelCacheService;
 
     private final String modelDir;
 
@@ -61,12 +61,14 @@ public class FederatedWebController {
             @Value("${model_dir}") String modelDir,
             @Value("${time_window}") String timeWindow,
             @Value("${min_updates}") String minUpdates,
-            @Value("${layer_index}") String layerIndex
+            @Value("${layer_index}") String layerIndex,
+            ModelCacheService modelCacheService
     ) throws IOException {
         this.modelDir = modelDir;
         this.timeWindow = timeWindow;
         this.minUpdates = minUpdates;
         this.layerIndex = layerIndex;
+        this.modelCacheService = modelCacheService;
 
         if (federatedServer == null) {
             // TODO Inject!
@@ -89,6 +91,8 @@ public class FederatedWebController {
 
             federatedServer = FederatedServerImpl.Companion.getInstance();
             federatedServer.initialise(repository, updatesStrategy, roundController, System.out::println, properties);
+
+            // TODO clean all redis cache
 
             // We're starting a new round when the server starts
             roundController.startRound();
@@ -142,10 +146,12 @@ public class FederatedWebController {
     /**
      * client get model if client side have no embedded model exits when app starts
      *
+     * TODO get model type by request param
+     *
      * @return model data file
      */
     @GetMapping("model")
-    public ResponseEntity<Object> getFile() {
+    public ResponseEntity<Object> getFile() throws IOException {
         log.info("[getFile]...");
 
         if (!rateLimiter.tryAcquire(1000, TimeUnit.MILLISECONDS)) {
@@ -153,28 +159,29 @@ public class FederatedWebController {
             return new ResponseHandler().generateResponse("too many request, please retry later!", HttpStatus.TOO_MANY_REQUESTS, null);
         }
 
-        File file = federatedServer.getModelFile();
-        String fileName = federatedServer.getUpdatingRound().getModelVersion() + ".zip";
+        File file;
+        ModelFileEntity modelFileEntity;
 
-        HttpHeaders header = new HttpHeaders();
-        header.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"");
-        header.add("Cache-Control", "no-cache, no-store, must-revalidate");
-        header.add("Pragma", "no-cache");
-        header.add("Expires", "0");
-
-        ByteArrayResource resource = null;
-        try {
-            Path path = Paths.get(file.getAbsolutePath());
-            resource = new ByteArrayResource(Files.readAllBytes(path));
-        } catch (Exception e) {
-            e.printStackTrace();
+        // get model file from redis first, if not exist, get from system and put to redis
+        String testModelCacheId = "modelCache123456"; // FIXME: could duplicate
+        Optional<ModelFileEntity> fileEntityOptional = modelCacheService.getFile(CacheKey.MODEL_KEY.getKey() + "_" + testModelCacheId);
+        if (fileEntityOptional.isEmpty()) {
+            log.info("[getFile] cache not found, get from system and set cache...");
+            file = federatedServer.getModelFile();
+            modelCacheService.save(file, "testModelCacheName", CacheKey.MODEL_KEY.getKey() + "_" + testModelCacheId);
+            modelFileEntity = new ModelFileEntity();
+            modelFileEntity.setData(Files.readAllBytes(file.toPath()));
+        } else {
+            modelFileEntity = fileEntityOptional.get();
         }
 
+        String fileName = federatedServer.getUpdatingRound().getModelVersion() + ".zip";
+
         return ResponseEntity.ok()
-                .headers(header)
-                .contentLength(file.length())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+//                .contentType(MediaType.valueOf(fileEntity.getContentType()))
                 .contentType(MediaType.parseMediaType("application/octet-stream"))
-                .body(resource);
+                .body(modelFileEntity.getData());
     }
 
     /**
