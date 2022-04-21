@@ -93,6 +93,7 @@ public class FederatedWebController {
             federatedServer.initialise(repository, updatesStrategy, roundController, System.out::println, properties);
 
             // TODO clean all redis cache
+            modelCacheService.delete();
 
             // We're starting a new round when the server starts
             roundController.startRound();
@@ -111,7 +112,7 @@ public class FederatedWebController {
     }
 
     /**
-     * client POST on device trained model gradients
+     * client POST it's on-device-trained model gradients
      *
      * @param multipartFile model gradients
      * @param samples       the number of image size to train this model gradients
@@ -163,12 +164,12 @@ public class FederatedWebController {
         ModelFileEntity modelFileEntity;
 
         // get model file from redis first, if not exist, get from system and put to redis
-        String testModelCacheId = "modelCache123456"; // FIXME: could duplicate
-        Optional<ModelFileEntity> fileEntityOptional = modelCacheService.getFile(CacheKey.MODEL_KEY.getKey() + "_" + testModelCacheId);
+        String tmpModelCacheId = "modelCache123456"; // TODO: assign diff value by request's model type
+        Optional<ModelFileEntity> fileEntityOptional = modelCacheService.getFile(CacheKey.MODEL_KEY.getKey() + "_" + tmpModelCacheId);
         if (fileEntityOptional.isEmpty()) {
             log.info("[getFile] cache not found, get from system and set cache...");
             file = federatedServer.getModelFile();
-            modelCacheService.save(file, "testModelCacheName", CacheKey.MODEL_KEY.getKey() + "_" + testModelCacheId);
+            modelCacheService.save(file, "testModelCacheName", CacheKey.MODEL_KEY.getKey() + "_" + tmpModelCacheId);
             modelFileEntity = new ModelFileEntity();
             modelFileEntity.setData(Files.readAllBytes(file.toPath()));
         } else {

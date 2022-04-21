@@ -58,4 +58,8 @@ public class ModelCacheService {
     public Optional<ModelFileEntity> getFile(String id) {
         return modelCacheDAO.findById(id);
     }
+
+    public void delete() {
+        modelCacheDAO.deleteAll();
+    }
 }
