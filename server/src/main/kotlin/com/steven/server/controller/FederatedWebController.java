@@ -1,5 +1,7 @@
 package com.steven.server.controller;
 
+import com.google.common.hash.HashCode;
+import com.google.common.hash.Hashing;
 import com.google.common.util.concurrent.RateLimiter;
 import com.steven.server.core.FederatedAveragingStrategy;
 import com.steven.server.core.datasource.*;
@@ -8,15 +10,16 @@ import com.steven.server.core.domain.model.RoundController;
 import com.steven.server.core.domain.model.UpdatesStrategy;
 import com.steven.server.core.domain.model.UpdatingRound;
 import com.steven.server.core.domain.repository.ServerRepository;
-import com.steven.server.model.ModelFileEntity;
+import com.steven.server.model.ModelFilePO;
 import com.steven.server.response.ResponseHandler;
-import com.steven.server.service.ModelCacheService;
+import com.steven.server.service.redis.ModelFileService;
 import com.steven.server.util.CacheKey;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -32,6 +35,7 @@ import java.nio.file.Paths;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @RestController
@@ -43,7 +47,9 @@ public class FederatedWebController {
 
     RateLimiter rateLimiter = RateLimiter.create(100.0);
 
-    private final ModelCacheService modelCacheService;
+    private final ModelFileService modelFileService;
+
+    private final StringRedisTemplate stringRedisTemplate;
 
     private final String modelDir;
 
@@ -52,6 +58,8 @@ public class FederatedWebController {
     private final String minUpdates;
 
     private final String layerIndex;
+
+    private final String tmpModelCacheId = "modelCache123456"; // TODO: assign diff value by request's model type
 
     /**
      * initialize classes and file data source when server start
@@ -62,13 +70,15 @@ public class FederatedWebController {
             @Value("${time_window}") String timeWindow,
             @Value("${min_updates}") String minUpdates,
             @Value("${layer_index}") String layerIndex,
-            ModelCacheService modelCacheService
+            ModelFileService modelFileService,
+            StringRedisTemplate stringRedisTemplate
     ) throws IOException {
         this.modelDir = modelDir;
         this.timeWindow = timeWindow;
         this.minUpdates = minUpdates;
         this.layerIndex = layerIndex;
-        this.modelCacheService = modelCacheService;
+        this.modelFileService = modelFileService;
+        this.stringRedisTemplate = stringRedisTemplate;
 
         if (federatedServer == null) {
             // TODO Inject!
@@ -93,7 +103,7 @@ public class FederatedWebController {
             federatedServer.initialise(repository, updatesStrategy, roundController, System.out::println, properties);
 
             // TODO clean all redis cache
-            modelCacheService.delete();
+            modelFileService.delete();
 
             // We're starting a new round when the server starts
             roundController.startRound();
@@ -131,7 +141,9 @@ public class FederatedWebController {
             } else {
                 byte[] bytes = IOUtils.toByteArray(multipartFile.getInputStream());
 
-                // TODO compare hash to redis, if not exists, push to redis [hash: file]
+                if (isCacheExists(bytes)) return false; // reject those requests already exist in redis cache
+
+                // TODO check region restrict
 
                 federatedServer.pushUpdate(bytes, samples);
 
@@ -145,8 +157,35 @@ public class FederatedWebController {
     }
 
     /**
+     * compare update model param hashes to redis, if not exists, push file hash value to redis
+     * @param bytes
+     * @return [Boolean] cache already exists the same file hash or not
+     * @throws IOException
+     */
+    private boolean isCacheExists(byte[] bytes) throws IOException {
+        File targetFile = new File("src/main/resources/targetFile" + UUID.randomUUID() + ".tmp");
+        com.google.common.io.Files.write(bytes, targetFile);
+        HashCode hashCode = com.google.common.io.Files.hash(targetFile, Hashing.sha1());
+        String modelParamsHash = hashCode.toString();
+
+        targetFile.delete();
+
+        String hashStr = stringRedisTemplate.opsForValue().get(CacheKey.PARAM_KEY.getKey() + modelParamsHash);
+        if (hashStr == null) {
+            log.info("[pushGradient] params: {}. not found in cache, add new one", modelParamsHash);
+            stringRedisTemplate.opsForValue().set(CacheKey.PARAM_KEY.getKey() + modelParamsHash, modelParamsHash, 3600, TimeUnit.SECONDS);
+        } else {
+            log.info("[pushGradient] params: {}. already exists, not do following logic", modelParamsHash);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * client get model if client side have no embedded model exits when app starts
-     *
+     * <p>
      * TODO get model type by request param
      *
      * @return model data file
@@ -161,19 +200,18 @@ public class FederatedWebController {
         }
 
         File file;
-        ModelFileEntity modelFileEntity;
+        ModelFilePO modelFilePO;
 
         // get model file from redis first, if not exist, get from system and put to redis
-        String tmpModelCacheId = "modelCache123456"; // TODO: assign diff value by request's model type
-        Optional<ModelFileEntity> fileEntityOptional = modelCacheService.getFile(CacheKey.MODEL_KEY.getKey() + "_" + tmpModelCacheId);
+        Optional<ModelFilePO> fileEntityOptional = modelFileService.getFile(CacheKey.MODEL_KEY.getKey() + tmpModelCacheId);
         if (fileEntityOptional.isEmpty()) {
             log.info("[getFile] cache not found, get from system and set cache...");
             file = federatedServer.getModelFile();
-            modelCacheService.save(file, "testModelCacheName", CacheKey.MODEL_KEY.getKey() + "_" + tmpModelCacheId);
-            modelFileEntity = new ModelFileEntity();
-            modelFileEntity.setData(Files.readAllBytes(file.toPath()));
+            modelFileService.save(file, "testModelCacheName", CacheKey.MODEL_KEY.getKey() + tmpModelCacheId);
+            modelFilePO = new ModelFilePO();
+            modelFilePO.setData(Files.readAllBytes(file.toPath()));
         } else {
-            modelFileEntity = fileEntityOptional.get();
+            modelFilePO = fileEntityOptional.get();
         }
 
         String fileName = federatedServer.getUpdatingRound().getModelVersion() + ".zip";
@@ -182,7 +220,7 @@ public class FederatedWebController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
 //                .contentType(MediaType.valueOf(fileEntity.getContentType()))
                 .contentType(MediaType.parseMediaType("application/octet-stream"))
-                .body(modelFileEntity.getData());
+                .body(modelFilePO.getData());
     }
 
     /**

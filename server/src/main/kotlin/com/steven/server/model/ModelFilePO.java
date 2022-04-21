@@ -3,7 +3,7 @@ package com.steven.server.model;
 import org.springframework.data.redis.core.RedisHash;
 
 @RedisHash("ModelFile")
-public class ModelFileEntity {
+public class ModelFilePO {
 
     private String id;
     private String name;
