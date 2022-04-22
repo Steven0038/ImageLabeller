@@ -12,6 +12,7 @@ import com.steven.server.core.domain.model.UpdatingRound;
 import com.steven.server.core.domain.repository.ServerRepository;
 import com.steven.server.model.ModelFilePO;
 import com.steven.server.response.ResponseHandler;
+import com.steven.server.service.IpCheckerService;
 import com.steven.server.service.redis.ModelFileService;
 import com.steven.server.util.CacheKey;
 import org.apache.commons.io.IOUtils;
@@ -27,6 +28,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletRequest;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -48,6 +50,8 @@ public class FederatedWebController {
     RateLimiter rateLimiter = RateLimiter.create(100.0);
 
     private final ModelFileService modelFileService;
+
+    private final IpCheckerService ipCheckerService;
 
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -71,6 +75,7 @@ public class FederatedWebController {
             @Value("${min_updates}") String minUpdates,
             @Value("${layer_index}") String layerIndex,
             ModelFileService modelFileService,
+            IpCheckerService ipCheckerService,
             StringRedisTemplate stringRedisTemplate
     ) throws IOException {
         this.modelDir = modelDir;
@@ -78,6 +83,7 @@ public class FederatedWebController {
         this.minUpdates = minUpdates;
         this.layerIndex = layerIndex;
         this.modelFileService = modelFileService;
+        this.ipCheckerService = ipCheckerService;
         this.stringRedisTemplate = stringRedisTemplate;
 
         if (federatedServer == null) {
@@ -118,6 +124,7 @@ public class FederatedWebController {
     @GetMapping("available")
     public String available() {
         log.info("[available]...");
+
         return "yes";
     }
 
@@ -131,7 +138,8 @@ public class FederatedWebController {
     @PostMapping("model")
     public Boolean pushGradient(
             final @RequestParam("file") MultipartFile multipartFile,
-            final @RequestParam("samples") int samples
+            final @RequestParam("samples") int samples,
+            HttpServletRequest httpServletRequest
     ) {
         log.info("[pushGradient]...");
 
@@ -144,6 +152,8 @@ public class FederatedWebController {
                 if (isCacheExists(bytes)) return false; // reject those requests already exist in redis cache
 
                 // TODO check region restrict
+                if (ipCheckerService.isShallNotPass(httpServletRequest.getRemoteAddr())) return false;
+//                if (ipCheckerService.isShallNotPass("95.173.136.162")) return false; // FIXME test
 
                 federatedServer.pushUpdate(bytes, samples);
 
@@ -158,6 +168,7 @@ public class FederatedWebController {
 
     /**
      * compare update model param hashes to redis, if not exists, push file hash value to redis
+     *
      * @param bytes
      * @return [Boolean] cache already exists the same file hash or not
      * @throws IOException
