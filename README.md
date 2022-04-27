@@ -2,8 +2,8 @@
 federated server of mobile image classification model improvement
 
 ## What is it?
-This is a POC federated server project inspired from [PhotoLabellerServer](https://github.com/mccorby/PhotoLabellerServer),
-could train an CNN image classification model and involved to federated learning cycle interacting with clientside.
+This is a POC federated server project, could train an CNN image classification model and involved to 
+federated learning cycle interacting with Android mobile clientside.
 
 I reconstruct it to springboot maven Multi Module Project and adds some features to make it more like production usage.
 
@@ -12,52 +12,42 @@ Including:
 - flexible image data preprocessing module, allow you to train with your own dataset
 - a high concurrency rest api build with rate limiter and cache mechanism
 
+You could also check out my contribution of the workable PhotoLabeller project use dl4j official cifar10 dataset from the following branches.
+- [serverside](https://github.com/Steven0038/PhotoLabeller)
+- [clientside](https://github.com/Steven0038/PhotoLabellerServer)
+
 ## Tech stack
 - spring boot with java and kotlin
-- Deeplearning4j
+- Deeplearning4j (model training)
 - GeoLite (upload region restrict)
 - Guava with rate limiter
 - redis (model upload and download cache)
 - mongo DB (TODO: record model param update records, and federated cycle control)
 
+## Environment preparation
+- JDK up to 8
+- redis at port 6379
+- mongo at port 27017
+- IDEA or eclipse
+- android studio with physical android phones
+- server and phone devices should under the same WI-FI environment
+
 ## Work Flow
 - train an initial model with image dataset
-- deploy initial model to android client side or other platform
-- setup and start federated sever 
+- deploy initial model to android platform client side
+- setup and start federated sever
 - do clientside image capture and label, and run client side on device training
-- client side upload trained model param to server
+- client side automatically upload trained model param to server
 - while upload model params reach the default server setting, server will do federated average and get a new federated model
 - manually or automatically(TODO) deploy the improved model to clientside
 
-## Environment preparation
-
-java up to 8
-
-docker could be used to run quickly installation
-#### redis
-````
-docker pull redis:latest
-
-docker run -itd --name redis-test -p 6379:6379 redis
-````
-#### mongo (TODO)
-````
-docker pull mongo:latest
-
-docker run -itd --name mongo -p 27017:27017 mongo --auth
-
-docker exec -it mongo mongo admin
-
-db.createUser({ user:'admin',pwd:'123456',roles:[ { role:'userAdminAnyDatabase', db: 'admin'},"readWriteAnyDatabase"]});
-
-db.auth('admin', '123456')
-````
+## Architecture
+the classical   
 
 ## Installation
 git clone this project and android client side from this [branch](https://github.com/Steven0038/PhotoLabeller)
 
 ## Train initial model
-
 1. adjust the dataset directory path
 `````
 model/src/main/kotlin/com/steven/model/bo/TrainParams.kt
@@ -67,11 +57,11 @@ model/src/main/kotlin/com/steven/model/bo/TrainParams.kt
 ````
 model/src/main/kotlin/com/steven/model/Main.kt
 ````
-to train the initial model with IDE run param argument, arg[0] is train, arg[1] is the model save destination path,
+to train the initial model with IDE run param argument, arg[0] is train, arg[1] is the destination path dir to save model,
 
 ex:
 ````
-train E:/workspace/phModelNew web
+train E:/workspace/phModelNew
 ````
 
 3. after get the trained model, rename the file to model.zip, and put to the initial model path define under
@@ -85,7 +75,7 @@ model_dir = E:/workspace/phModelNew
 server/src/main/kotlin/com/steven/server/ServerApplication.kt
 ````
 
-5. visits the following APIs the make sure all necessary document initialized
+5. visits the following APIs to make sure all necessary documents initialized
 ```
 http://localhost:8080/service/federatedservice/available 
 ```
@@ -122,8 +112,16 @@ photolabeller.labeller.MainFragment.Companion public final val label
 photolabeller.config.SharedConfig public final val labels
 ```
 
-### android on device model raining and participate federated server model average
-1. run app
+### Android on device model raining and participate federated server model average
+1. run app [branch](https://github.com/Steven0038/PhotoLabeller)
 2. take some pictures and manually label the prediction to actual classification
 3. run on device training, and will automatically update model params to serverside
 4. if default min_updates threshold is reached, serverside will run federated average algo. and produce new federated model
+
+### References
+This project inspired from [PhotoLabellerServer](https://github.com/mccorby/PhotoLabellerServer),
+the core package usage with MIT license.
+
+You could also check out my contribution of the workable PhotoLabeller project use dl4j official cifar10 dataset from the following branches.
+- [serverside](https://github.com/Steven0038/PhotoLabeller)
+- [clientside](https://github.com/Steven0038/PhotoLabellerServer)
