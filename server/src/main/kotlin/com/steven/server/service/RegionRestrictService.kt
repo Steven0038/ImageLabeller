@@ -13,8 +13,8 @@ import java.net.UnknownHostException
  * check IP address's geo details
  */
 @Service
-class IpCheckerService {
-    private val logger = LoggerFactory.getLogger(IpCheckerService::class.java)
+class RegionRestrictService {
+    private val logger = LoggerFactory.getLogger(RegionRestrictService::class.java)
 
     val dbReader: DatabaseReader =
         DatabaseReader.Builder(File(javaClass.classLoader.getResource("GeoLite2-City.mmdb")!!.path)).build()
