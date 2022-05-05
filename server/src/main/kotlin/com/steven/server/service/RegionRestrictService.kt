@@ -91,9 +91,6 @@ class RegionRestrictService(private val modelManageService: ModelManageService) 
      *  @return [Boolean] true if this IP visit too frequently
      */
     fun verifyVisitRecord(ip: String): Boolean {
-
-        println("listOfIntegers: $listOfForbiddenCountries")
-
         val todayStr = Extensions().getTodayStr()
 
         // check record exists or not
@@ -103,6 +100,7 @@ class RegionRestrictService(private val modelManageService: ModelManageService) 
                 modelManageService.updateCount(this.get(), todayStr)
             } ?: run {
             // create new one if this ip have no record yet
+            logger.info("[verifyVisitRecord] ip record not found, insert a new one...")
             modelManageService.save(
                 ModelManagePO().apply {
                     this.ip = ip
@@ -120,7 +118,6 @@ class RegionRestrictService(private val modelManageService: ModelManageService) 
         return when {
             updatedPO.isCountTotalOverThreshold() -> false
             updatedPO.isDateCountOverThreshold(todayStr) -> false
-
             else -> true
         }
     }

@@ -15,6 +15,9 @@ class Extensions {
         return digest.fold("") { str, it -> str + "%02x".format(it) }
     }
 
+    /**
+     * get today's date string
+     */
     fun getTodayStr(): String {
         return SimpleDateFormat("dd-MM-yyyy").format(Date())
     }

@@ -108,7 +108,7 @@ public class FederatedWebController {
             federatedServer = FederatedServerImpl.Companion.getInstance();
             federatedServer.initialise(repository, updatesStrategy, roundController, System.out::println, properties);
 
-            // TODO clean all redis cache
+            // clean all redis cache while server starts
             modelFileService.delete();
 
             // We're starting a new round when the server starts
@@ -132,8 +132,8 @@ public class FederatedWebController {
      * client POST it's on-device-trained model gradients
      *
      * @param multipartFile model gradients
-     * @param samples       the number of image size to train this model gradients
-     * @return [Boolean] update efficient or not
+     * @param samples the number of image size to train this model gradients
+     * @return [Boolean] model gradient params update successful or not
      */
     @PostMapping("model")
     public Boolean pushGradient(
