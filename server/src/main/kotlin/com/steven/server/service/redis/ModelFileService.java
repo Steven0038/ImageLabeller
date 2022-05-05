@@ -1,7 +1,7 @@
 package com.steven.server.service.redis;
 
 import com.steven.server.model.ModelFilePO;
-import com.steven.server.repository.ModelFileDAO;
+import com.steven.server.repository.redis.ModelFileDAO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;

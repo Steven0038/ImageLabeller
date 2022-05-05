@@ -12,7 +12,7 @@ import com.steven.server.core.domain.model.UpdatingRound;
 import com.steven.server.core.domain.repository.ServerRepository;
 import com.steven.server.model.ModelFilePO;
 import com.steven.server.response.ResponseHandler;
-import com.steven.server.service.IpCheckerService;
+import com.steven.server.service.RegionRestrictService;
 import com.steven.server.service.redis.ModelFileService;
 import com.steven.server.util.CacheKey;
 import org.apache.commons.io.IOUtils;
@@ -51,7 +51,7 @@ public class FederatedWebController {
 
     private final ModelFileService modelFileService;
 
-    private final IpCheckerService ipCheckerService;
+    private final RegionRestrictService regionRestrictService;
 
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -75,7 +75,7 @@ public class FederatedWebController {
             @Value("${min_updates}") String minUpdates,
             @Value("${layer_index}") String layerIndex,
             ModelFileService modelFileService,
-            IpCheckerService ipCheckerService,
+            RegionRestrictService regionRestrictService,
             StringRedisTemplate stringRedisTemplate
     ) throws IOException {
         this.modelDir = modelDir;
@@ -83,7 +83,7 @@ public class FederatedWebController {
         this.minUpdates = minUpdates;
         this.layerIndex = layerIndex;
         this.modelFileService = modelFileService;
-        this.ipCheckerService = ipCheckerService;
+        this.regionRestrictService = regionRestrictService;
         this.stringRedisTemplate = stringRedisTemplate;
 
         if (federatedServer == null) {
@@ -108,7 +108,7 @@ public class FederatedWebController {
             federatedServer = FederatedServerImpl.Companion.getInstance();
             federatedServer.initialise(repository, updatesStrategy, roundController, System.out::println, properties);
 
-            // TODO clean all redis cache
+            // clean all redis cache while server starts
             modelFileService.delete();
 
             // We're starting a new round when the server starts
@@ -132,8 +132,8 @@ public class FederatedWebController {
      * client POST it's on-device-trained model gradients
      *
      * @param multipartFile model gradients
-     * @param samples       the number of image size to train this model gradients
-     * @return [Boolean] update efficient or not
+     * @param samples the number of image size to train this model gradients
+     * @return [Boolean] model gradient params update successful or not
      */
     @PostMapping("model")
     public Boolean pushGradient(
@@ -151,9 +151,8 @@ public class FederatedWebController {
 
                 if (isCacheExists(bytes)) return false; // reject those requests already exist in redis cache
 
-                // TODO check region restrict
-                if (ipCheckerService.isShallNotPass(httpServletRequest.getRemoteAddr())) return false;
-//                if (ipCheckerService.isShallNotPass("95.173.136.162")) return false; // FIXME test
+                // check region restriction and prevent IP visit too frequently
+                if (regionRestrictService.isShallNotPass(httpServletRequest.getRemoteAddr())) return false;
 
                 federatedServer.pushUpdate(bytes, samples);
 
