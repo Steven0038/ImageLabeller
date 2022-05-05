@@ -12,9 +12,7 @@ Including:
 - flexible image data preprocessing module, allow you to train with your own dataset
 - a high concurrency rest api build with rate limiter and cache mechanism
 
-You could also check out my contribution of the workable PhotoLabeller project use dl4j official cifar10 dataset from the following branches.
-- [serverside](https://github.com/Steven0038/PhotoLabeller)
-- [clientside](https://github.com/Steven0038/PhotoLabellerServer)
+Notice: for some reasons, this is a java-kotlin mixed project
 
 ## Tech stack
 - spring boot with java and kotlin
@@ -22,12 +20,12 @@ You could also check out my contribution of the workable PhotoLabeller project u
 - GeoLite (upload region restrict)
 - Guava with rate limiter
 - redis (model upload and download cache)
-- mongo DB (TODO: record model param update records, and federated cycle control)
+- mongo DB (record model param update records, and federated cycle control[TODO])
 
 ## Environment preparation
 - JDK up to 8
 - redis at port 6379
-- mongo at port 27017
+- mongo at port 27017 with connection string ``mongodb://admin:123456@localhost:27017/spring_boot_mongo_app?authSource=admin&readPreference=primary&appname=MongoDB%20Compass&ssl=false``
 - IDEA or eclipse
 - android studio with physical android phones
 - server and phone devices should under the same WI-FI environment
@@ -42,7 +40,7 @@ You could also check out my contribution of the workable PhotoLabeller project u
 - manually or automatically(TODO) deploy the improved model to clientside
 
 ## Architecture
-the classical   
+TODO
 
 ## Installation
 git clone this project and android client side from this [branch](https://github.com/Steven0038/PhotoLabeller)

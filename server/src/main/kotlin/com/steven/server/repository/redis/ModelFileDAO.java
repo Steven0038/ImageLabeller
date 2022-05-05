@@ -1,4 +1,4 @@
-package com.steven.server.repository;
+package com.steven.server.repository.redis;
 
 import com.steven.server.model.ModelFilePO;
 import org.springframework.data.repository.CrudRepository;

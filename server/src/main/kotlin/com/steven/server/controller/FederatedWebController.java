@@ -151,9 +151,8 @@ public class FederatedWebController {
 
                 if (isCacheExists(bytes)) return false; // reject those requests already exist in redis cache
 
-                // TODO check region restrict
+                // check region restriction and prevent IP visit too frequently
                 if (regionRestrictService.isShallNotPass(httpServletRequest.getRemoteAddr())) return false;
-//                if (ipCheckerService.isShallNotPass("95.173.136.162")) return false; // FIXME test
 
                 federatedServer.pushUpdate(bytes, samples);
 
